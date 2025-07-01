@@ -1,0 +1,164 @@
+{
+  "name": "tauri-mcp",
+  "version": "0.1.1",
+  "description": "MCP server for testing and interacting with Tauri v2 applications",
+  "author": "David Irvine <david.irvine@maidsafe.net>",
+  "license": "MIT OR Apache-2.0",
+  "runtime": "binary",
+  "platforms": ["darwin", "linux", "windows"],
+  "main": {
+    "darwin": "tauri-mcp",
+    "linux": "tauri-mcp",
+    "windows": "tauri-mcp.exe"
+  },
+  "args": ["serve"],
+  "env": {
+    "TAURI_MCP_LOG_LEVEL": "info"
+  },
+  "features": {
+    "tools": [
+      {
+        "name": "launch_app",
+        "description": "Launch a Tauri application",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "app_path": { "type": "string", "description": "Path to the Tauri application" },
+            "args": { "type": "array", "items": { "type": "string" }, "description": "Optional launch arguments" }
+          },
+          "required": ["app_path"]
+        }
+      },
+      {
+        "name": "stop_app",
+        "description": "Stop a running Tauri application",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "process_id": { "type": "string", "description": "Process ID of the app to stop" }
+          },
+          "required": ["process_id"]
+        }
+      },
+      {
+        "name": "get_app_logs",
+        "description": "Get stdout/stderr logs from a running app",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "process_id": { "type": "string", "description": "Process ID of the app" },
+            "lines": { "type": "number", "description": "Number of recent lines to return" }
+          },
+          "required": ["process_id"]
+        }
+      },
+      {
+        "name": "take_screenshot",
+        "description": "Take a screenshot of the app window",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "process_id": { "type": "string", "description": "Process ID of the app" },
+            "output_path": { "type": "string", "description": "Optional path to save the screenshot" }
+          },
+          "required": ["process_id"]
+        }
+      },
+      {
+        "name": "get_window_info",
+        "description": "Get window dimensions, position, and state",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "process_id": { "type": "string", "description": "Process ID of the app" }
+          },
+          "required": ["process_id"]
+        }
+      },
+      {
+        "name": "send_keyboard_input",
+        "description": "Send keyboard input to the app",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "process_id": { "type": "string", "description": "Process ID of the app" },
+            "keys": { "type": "string", "description": "Keys to send" }
+          },
+          "required": ["process_id", "keys"]
+        }
+      },
+      {
+        "name": "send_mouse_click",
+        "description": "Send mouse click to specific coordinates",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "process_id": { "type": "string", "description": "Process ID of the app" },
+            "x": { "type": "number", "description": "X coordinate" },
+            "y": { "type": "number", "description": "Y coordinate" },
+            "button": { "type": "string", "enum": ["left", "right", "middle"], "description": "Mouse button" }
+          },
+          "required": ["process_id", "x", "y"]
+        }
+      },
+      {
+        "name": "execute_js",
+        "description": "Execute JavaScript in the app's webview",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "process_id": { "type": "string", "description": "Process ID of the app" },
+            "javascript_code": { "type": "string", "description": "JavaScript code to execute" }
+          },
+          "required": ["process_id", "javascript_code"]
+        }
+      },
+      {
+        "name": "get_devtools_info",
+        "description": "Get DevTools connection information",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "process_id": { "type": "string", "description": "Process ID of the app" }
+          },
+          "required": ["process_id"]
+        }
+      },
+      {
+        "name": "monitor_resources",
+        "description": "Monitor CPU, memory, and other resource usage",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "process_id": { "type": "string", "description": "Process ID of the app" }
+          },
+          "required": ["process_id"]
+        }
+      },
+      {
+        "name": "list_ipc_handlers",
+        "description": "List all registered Tauri IPC commands",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "process_id": { "type": "string", "description": "Process ID of the app" }
+          },
+          "required": ["process_id"]
+        }
+      },
+      {
+        "name": "call_ipc_command",
+        "description": "Call a Tauri IPC command",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "process_id": { "type": "string", "description": "Process ID of the app" },
+            "command_name": { "type": "string", "description": "Name of the IPC command" },
+            "args": { "type": "object", "description": "Arguments to pass to the command" }
+          },
+          "required": ["process_id", "command_name"]
+        }
+      }
+    ]
+  }
+}
