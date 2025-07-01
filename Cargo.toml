@@ -1,6 +1,6 @@
 [package]
 name = "tauri-mcp"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["David Irvine <david.irvine@maidsafe.net>"]
 description = "MCP server for testing and interacting with Tauri v2 applications"

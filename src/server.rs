@@ -49,7 +49,7 @@ impl Default for ServerConfig {
 #[rpc]
 pub trait TauriMcp {
     #[rpc(name = "initialize", returns = "Value")]
-    fn initialize(&self, protocol_version: String, capabilities: Value) -> jsonrpc_core::Result<Value>;
+    fn initialize(&self, params: Value) -> jsonrpc_core::Result<Value>;
     
     #[rpc(name = "shutdown", returns = "Value")]
     fn shutdown(&self) -> jsonrpc_core::Result<Value>;
@@ -89,6 +89,12 @@ pub trait TauriMcp {
     
     #[rpc(name = "call_ipc_command", returns = "Value")]
     fn call_ipc_command(&self, process_id: String, command_name: String, args: Option<Value>) -> jsonrpc_core::Result<Value>;
+    
+    #[rpc(name = "tools/list", returns = "Value")]
+    fn list_tools(&self) -> jsonrpc_core::Result<Value>;
+    
+    #[rpc(name = "tools/call", returns = "Value")]
+    fn call_tool(&self, params: Value) -> jsonrpc_core::Result<Value>;
 }
 
 impl TauriMcpServer {
@@ -181,24 +187,34 @@ struct McpServerImpl {
 }
 
 impl TauriMcp for McpServerImpl {
-    fn initialize(&self, protocol_version: String, capabilities: Value) -> jsonrpc_core::Result<Value> {
+    fn initialize(&self, params: Value) -> jsonrpc_core::Result<Value> {
+        // Extract protocol version from params
+        let protocol_version = params.get("protocolVersion")
+            .and_then(|v| v.as_str())
+            .unwrap_or("1.0");
+        
+        // For now, we only support version 1.0
         if protocol_version != "1.0" {
             return Err(RpcError::invalid_params(format!("Unsupported protocol version: {}", protocol_version)));
         }
         
+        // Extract client capabilities if provided
+        let _client_capabilities = params.get("capabilities");
+        
         Ok(json!({
-            "protocol_version": "1.0",
-            "server_info": {
+            "protocolVersion": "1.0",
+            "serverInfo": {
                 "name": "tauri-mcp",
                 "version": env!("CARGO_PKG_VERSION"),
                 "description": "MCP server for testing and interacting with Tauri v2 applications"
             },
             "capabilities": {
-                "tools": true,
-                "resources": false,
-                "prompts": false,
-                "logging": true,
-                "progress": true
+                "tools": {
+                    "listTools": true
+                },
+                "resources": null,
+                "prompts": null,
+                "logging": null
             }
         }))
     }
@@ -400,6 +416,306 @@ impl TauriMcp for McpServerImpl {
         match result {
             Ok(result) => Ok(result),
             Err(e) => Err(RpcError::invalid_params(e.to_string())),
+        }
+    }
+    
+    fn list_tools(&self) -> jsonrpc_core::Result<Value> {
+        Ok(json!({
+            "tools": [
+                {
+                    "name": "launch_app",
+                    "description": "Launch a Tauri application",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "app_path": { "type": "string", "description": "Path to the Tauri application" },
+                            "args": { "type": "array", "items": { "type": "string" }, "description": "Optional launch arguments" }
+                        },
+                        "required": ["app_path"]
+                    }
+                },
+                {
+                    "name": "stop_app",
+                    "description": "Stop a running Tauri application",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "process_id": { "type": "string", "description": "Process ID of the app to stop" }
+                        },
+                        "required": ["process_id"]
+                    }
+                },
+                {
+                    "name": "get_app_logs",
+                    "description": "Get stdout/stderr logs from a running app",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "process_id": { "type": "string", "description": "Process ID of the app" },
+                            "lines": { "type": "number", "description": "Number of recent lines to return" }
+                        },
+                        "required": ["process_id"]
+                    }
+                },
+                {
+                    "name": "take_screenshot",
+                    "description": "Take a screenshot of the app window",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "process_id": { "type": "string", "description": "Process ID of the app" },
+                            "output_path": { "type": "string", "description": "Optional path to save the screenshot" }
+                        },
+                        "required": ["process_id"]
+                    }
+                },
+                {
+                    "name": "get_window_info",
+                    "description": "Get window dimensions, position, and state",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "process_id": { "type": "string", "description": "Process ID of the app" }
+                        },
+                        "required": ["process_id"]
+                    }
+                },
+                {
+                    "name": "send_keyboard_input",
+                    "description": "Send keyboard input to the app",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "process_id": { "type": "string", "description": "Process ID of the app" },
+                            "keys": { "type": "string", "description": "Keys to send" }
+                        },
+                        "required": ["process_id", "keys"]
+                    }
+                },
+                {
+                    "name": "send_mouse_click",
+                    "description": "Send mouse click to specific coordinates",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "process_id": { "type": "string", "description": "Process ID of the app" },
+                            "x": { "type": "number", "description": "X coordinate" },
+                            "y": { "type": "number", "description": "Y coordinate" },
+                            "button": { "type": "string", "enum": ["left", "right", "middle"], "description": "Mouse button" }
+                        },
+                        "required": ["process_id", "x", "y"]
+                    }
+                },
+                {
+                    "name": "execute_js",
+                    "description": "Execute JavaScript in the app's webview",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "process_id": { "type": "string", "description": "Process ID of the app" },
+                            "javascript_code": { "type": "string", "description": "JavaScript code to execute" }
+                        },
+                        "required": ["process_id", "javascript_code"]
+                    }
+                },
+                {
+                    "name": "get_devtools_info",
+                    "description": "Get DevTools connection information",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "process_id": { "type": "string", "description": "Process ID of the app" }
+                        },
+                        "required": ["process_id"]
+                    }
+                },
+                {
+                    "name": "monitor_resources",
+                    "description": "Monitor CPU, memory, and other resource usage",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "process_id": { "type": "string", "description": "Process ID of the app" }
+                        },
+                        "required": ["process_id"]
+                    }
+                },
+                {
+                    "name": "list_ipc_handlers",
+                    "description": "List all registered Tauri IPC commands",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "process_id": { "type": "string", "description": "Process ID of the app" }
+                        },
+                        "required": ["process_id"]
+                    }
+                },
+                {
+                    "name": "call_ipc_command",
+                    "description": "Call a Tauri IPC command",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "process_id": { "type": "string", "description": "Process ID of the app" },
+                            "command_name": { "type": "string", "description": "Name of the IPC command" },
+                            "args": { "type": "object", "description": "Arguments to pass to the command" }
+                        },
+                        "required": ["process_id", "command_name"]
+                    }
+                }
+            ]
+        }))
+    }
+    
+    fn call_tool(&self, params: Value) -> jsonrpc_core::Result<Value> {
+        let tool_name = params.get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| RpcError::invalid_params("Missing tool name"))?;
+        
+        let arguments = params.get("arguments")
+            .cloned()
+            .unwrap_or(json!({}));
+        
+        match tool_name {
+            "launch_app" => {
+                let app_path = arguments.get("app_path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing app_path"))?
+                    .to_string();
+                
+                let args = arguments.get("args")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                
+                self.launch_app(app_path, args)
+            },
+            "stop_app" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing process_id"))?
+                    .to_string();
+                
+                self.stop_app(process_id)
+            },
+            "get_app_logs" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing process_id"))?
+                    .to_string();
+                
+                let lines = arguments.get("lines")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize);
+                
+                self.get_app_logs(process_id, lines)
+            },
+            "take_screenshot" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing process_id"))?
+                    .to_string();
+                
+                let output_path = arguments.get("output_path")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                
+                self.take_screenshot(process_id, output_path)
+            },
+            "get_window_info" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing process_id"))?
+                    .to_string();
+                
+                self.get_window_info(process_id)
+            },
+            "send_keyboard_input" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing process_id"))?
+                    .to_string();
+                
+                let keys = arguments.get("keys")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing keys"))?
+                    .to_string();
+                
+                self.send_keyboard_input(process_id, keys)
+            },
+            "send_mouse_click" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing process_id"))?
+                    .to_string();
+                
+                let x = arguments.get("x")
+                    .and_then(|v| v.as_i64())
+                    .ok_or_else(|| RpcError::invalid_params("Missing x coordinate"))? as i32;
+                
+                let y = arguments.get("y")
+                    .and_then(|v| v.as_i64())
+                    .ok_or_else(|| RpcError::invalid_params("Missing y coordinate"))? as i32;
+                
+                let button = arguments.get("button")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                
+                self.send_mouse_click(process_id, x, y, button)
+            },
+            "execute_js" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing process_id"))?
+                    .to_string();
+                
+                let javascript_code = arguments.get("javascript_code")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing javascript_code"))?
+                    .to_string();
+                
+                self.execute_js(process_id, javascript_code)
+            },
+            "get_devtools_info" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing process_id"))?
+                    .to_string();
+                
+                self.get_devtools_info(process_id)
+            },
+            "monitor_resources" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing process_id"))?
+                    .to_string();
+                
+                self.monitor_resources(process_id)
+            },
+            "list_ipc_handlers" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing process_id"))?
+                    .to_string();
+                
+                self.list_ipc_handlers(process_id)
+            },
+            "call_ipc_command" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing process_id"))?
+                    .to_string();
+                
+                let command_name = arguments.get("command_name")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| RpcError::invalid_params("Missing command_name"))?
+                    .to_string();
+                
+                let args = arguments.get("args").cloned();
+                
+                self.call_ipc_command(process_id, command_name, args)
+            },
+            _ => Err(RpcError::method_not_found())
         }
     }
 }
