@@ -7,7 +7,6 @@ use crate::tools::{
     ipc::IpcManager,
 };
 use jsonrpc_core::{IoHandler, Params, Value, Error as RpcError};
-use jsonrpc_derive::rpc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
@@ -46,56 +45,6 @@ impl Default for ServerConfig {
     }
 }
 
-#[rpc]
-pub trait TauriMcp {
-    #[rpc(name = "initialize", returns = "Value")]
-    fn initialize(&self, params: Value) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "shutdown", returns = "Value")]
-    fn shutdown(&self) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "launch_app", returns = "Value")]
-    fn launch_app(&self, app_path: String, args: Option<Vec<String>>) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "stop_app", returns = "Value")]
-    fn stop_app(&self, process_id: String) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "get_app_logs", returns = "Value")]
-    fn get_app_logs(&self, process_id: String, lines: Option<usize>) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "take_screenshot", returns = "Value")]
-    fn take_screenshot(&self, process_id: String, output_path: Option<String>) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "get_window_info", returns = "Value")]
-    fn get_window_info(&self, process_id: String) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "send_keyboard_input", returns = "Value")]
-    fn send_keyboard_input(&self, process_id: String, keys: String) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "send_mouse_click", returns = "Value")]
-    fn send_mouse_click(&self, process_id: String, x: i32, y: i32, button: Option<String>) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "execute_js", returns = "Value")]
-    fn execute_js(&self, process_id: String, javascript_code: String) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "get_devtools_info", returns = "Value")]
-    fn get_devtools_info(&self, process_id: String) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "monitor_resources", returns = "Value")]
-    fn monitor_resources(&self, process_id: String) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "list_ipc_handlers", returns = "Value")]
-    fn list_ipc_handlers(&self, process_id: String) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "call_ipc_command", returns = "Value")]
-    fn call_ipc_command(&self, process_id: String, command_name: String, args: Option<Value>) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "tools/list", returns = "Value")]
-    fn list_tools(&self) -> jsonrpc_core::Result<Value>;
-    
-    #[rpc(name = "tools/call", returns = "Value")]
-    fn call_tool(&self, params: Value) -> jsonrpc_core::Result<Value>;
-}
 
 impl TauriMcpServer {
     pub async fn new(config_path: PathBuf) -> Result<Self> {
@@ -131,14 +80,90 @@ impl TauriMcpServer {
             ipc_manager: Arc::clone(&self.ipc_manager),
         };
         
-        io.extend_with(server.to_delegate());
+        // Register all methods manually to handle MCP's named parameters
+        let server_clone = server.clone();
+        io.add_method("initialize", move |params: Params| {
+            let server = server_clone.clone();
+            async move {
+                match params {
+                    Params::Map(mut map) => {
+                        let protocol_version = map.remove("protocolVersion")
+                            .and_then(|v| v.as_str().map(String::from))
+                            .unwrap_or_else(|| "1.0".to_string());
+                        
+                        let capabilities = map.remove("capabilities").unwrap_or(Value::Null);
+                        
+                        server.initialize(protocol_version, capabilities)
+                    }
+                    _ => Err(RpcError::invalid_params("Expected object parameters"))
+                }
+            }
+        });
+        
+        let server_clone = server.clone();
+        io.add_method("shutdown", move |_params: Params| {
+            let server = server_clone.clone();
+            async move { server.shutdown() }
+        });
+        
+        let server_clone = server.clone();
+        io.add_method("tools/list", move |_params: Params| {
+            let server = server_clone.clone();
+            async move { server.list_tools() }
+        });
+        
+        let server_clone = server.clone();
+        io.add_method("tools/call", move |params: Params| {
+            let server = server_clone.clone();
+            async move {
+                match params {
+                    Params::Map(map) => server.call_tool(Value::Object(map)),
+                    _ => Err(RpcError::invalid_params("Expected object parameters"))
+                }
+            }
+        });
+        
+        // Register all other tool methods
+        let tool_methods = vec![
+            ("launch_app", "app_path", "args"),
+            ("stop_app", "process_id", ""),
+            ("get_app_logs", "process_id", "lines"),
+            ("take_screenshot", "process_id", "output_path"),
+            ("get_window_info", "process_id", ""),
+            ("send_keyboard_input", "process_id", "keys"),
+            ("send_mouse_click", "process_id", "x,y,button"),
+            ("execute_js", "process_id", "javascript_code"),
+            ("get_devtools_info", "process_id", ""),
+            ("monitor_resources", "process_id", ""),
+            ("list_ipc_handlers", "process_id", ""),
+            ("call_ipc_command", "process_id", "command_name,args"),
+        ];
+        
+        for (method_name, _, _) in tool_methods {
+            let server_clone = server.clone();
+            io.add_method(method_name, move |params: Params| {
+                let server = server_clone.clone();
+                let method_name = method_name.to_string();
+                async move {
+                    match params {
+                        Params::Map(map) => {
+                            server.call_tool(json!({
+                                "name": method_name,
+                                "arguments": Value::Object(map)
+                            }))
+                        }
+                        _ => Err(RpcError::invalid_params("Expected object parameters"))
+                    }
+                }
+            });
+        }
         
         let stdin = tokio::io::stdin();
         let stdout = tokio::io::stdout();
         let mut reader = BufReader::new(stdin);
         let mut stdout = stdout;
         
-        debug!("MCP server ready, waiting for JSON-RPC requests on stdin");
+        // MCP server ready, waiting for JSON-RPC requests on stdin
         
         loop {
             let mut line = String::new();
@@ -178,6 +203,7 @@ impl TauriMcpServer {
     }
 }
 
+#[derive(Clone)]
 struct McpServerImpl {
     process_manager: Arc<RwLock<ProcessManager>>,
     window_manager: Arc<WindowManager>,
@@ -186,12 +212,8 @@ struct McpServerImpl {
     ipc_manager: Arc<IpcManager>,
 }
 
-impl TauriMcp for McpServerImpl {
-    fn initialize(&self, params: Value) -> jsonrpc_core::Result<Value> {
-        // Extract protocol version from params
-        let protocol_version = params.get("protocolVersion")
-            .and_then(|v| v.as_str())
-            .unwrap_or("1.0");
+impl McpServerImpl {
+    fn initialize(&self, protocol_version: String, capabilities: Value) -> jsonrpc_core::Result<Value> {
         
         // For now, we only support version 1.0
         if protocol_version != "1.0" {
@@ -199,7 +221,7 @@ impl TauriMcp for McpServerImpl {
         }
         
         // Extract client capabilities if provided
-        let _client_capabilities = params.get("capabilities");
+        let _client_capabilities = capabilities;
         
         Ok(json!({
             "protocolVersion": "1.0",

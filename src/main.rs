@@ -95,57 +95,19 @@ async fn main() -> Result<()> {
         .with_thread_ids(false)
         .with_file(false)
         .with_line_number(false)
+        .with_writer(std::io::stderr)
         .compact()
         .init();
     
-    println!("\n🚀 Tauri MCP Server v{}", env!("CARGO_PKG_VERSION"));
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
-    let config_exists = args.config.exists();
     let server = TauriMcpServer::new(args.config).await?;
     
     match args.command {
         Some(Command::Serve { host, port }) => {
-            println!("\n📡 Starting MCP server...");
-            println!("   Mode: JSON-RPC over stdio");
-            println!("   Config: {}", if config_exists { "loaded" } else { "using defaults" });
-            println!("\n🔧 Available Tools:");
-            println!("   • launch_app          - Launch Tauri applications");
-            println!("   • stop_app            - Stop running apps");
-            println!("   • take_screenshot     - Capture app windows");
-            println!("   • send_keyboard_input - Simulate keyboard input");
-            println!("   • send_mouse_click    - Simulate mouse clicks");
-            println!("   • execute_js          - Run JavaScript in webview");
-            println!("   • monitor_resources   - Track CPU/memory usage");
-            println!("   • ... and 5 more tools");
-            println!("\n📖 Usage:");
-            println!("   This server communicates via JSON-RPC on stdin/stdout.");
-            println!("   It's designed to be used by AI assistants like Claude.");
-            println!("\n   To use with Claude Desktop, add to your config:");
-            println!("   {{");
-            println!("     \"mcpServers\": {{");
-            println!("       \"tauri-mcp\": {{");
-            println!("         \"command\": \"tauri-mcp\",");
-            println!("         \"args\": [\"serve\"]");
-            println!("       }}");
-            println!("     }}");
-            println!("   }}");
-            println!("\n✅ Server ready! Waiting for JSON-RPC requests...");
-            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-            
+            // In serve mode, don't print anything to stdout - it's used for JSON-RPC
             server.serve(&host, port).await?;
         }
         None => {
-            if let Some(app_path) = args.app_path {
-                println!("\n📡 Starting MCP server with app: {:?}", app_path);
-            } else {
-                println!("\n📡 Starting MCP server in default mode");
-            }
-            println!("   Mode: JSON-RPC over stdio");
-            println!("\n💡 Tip: Run 'tauri-mcp --help' for usage information");
-            println!("\n✅ Server ready! Waiting for JSON-RPC requests...");
-            println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-            
+            // Default to serve mode without printing anything
             server.serve("127.0.0.1", 3000).await?;
         }
     }

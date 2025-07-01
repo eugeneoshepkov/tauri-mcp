@@ -1,6 +1,6 @@
 [package]
 name = "tauri-mcp"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["David Irvine <david.irvine@maidsafe.net>"]
 description = "MCP server for testing and interacting with Tauri v2 applications"
@@ -19,7 +19,7 @@ async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 jsonrpc-core = "18.0"
-jsonrpc-derive = "18.0"
+# jsonrpc-derive = "18.0"  # Not needed with manual method registration
 jsonrpc-core-client = "18.0"
 
 # Process and system monitoring
