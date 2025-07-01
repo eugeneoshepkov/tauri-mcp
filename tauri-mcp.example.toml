@@ -1,0 +1,16 @@
+# Tauri MCP Server Configuration Example
+
+# Auto-discover Tauri apps in the current directory
+auto_discover = true
+
+# Enable session management to remember app states
+session_management = true
+
+# Enable event streaming for real-time app events
+event_streaming = false
+
+# Enable performance profiling tools
+performance_profiling = false
+
+# Enable network request interception and logging
+network_interception = false
