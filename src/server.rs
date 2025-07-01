@@ -100,6 +100,12 @@ impl TauriMcpServer {
             }
         });
         
+        // Add initialized notification handler (no response expected)
+        let _server_clone = server.clone();
+        io.add_notification("notifications/initialized", move |_params: Params| {
+            tracing::info!("Received initialized notification from client");
+        });
+        
         let server_clone = server.clone();
         io.add_method("shutdown", move |_params: Params| {
             let server = server_clone.clone();
@@ -163,37 +169,53 @@ impl TauriMcpServer {
         let mut reader = BufReader::new(stdin);
         let mut stdout = stdout;
         
+        // Ensure stdout is not buffered for real-time communication
+        use std::io::{self, Write};
+        let _ = io::stdout().flush();
+        
         // MCP server ready, waiting for JSON-RPC requests on stdin
+        tracing::info!("MCP server started, waiting for requests on stdin");
         
         loop {
             let mut line = String::new();
             match reader.read_line(&mut line).await {
                 Ok(0) => {
-                    info!("EOF reached, shutting down");
+                    tracing::warn!("EOF reached on stdin, server shutting down");
                     break;
                 }
-                Ok(_) => {
+                Ok(n) => {
+                    tracing::debug!("Read {} bytes from stdin", n);
                     let line = line.trim();
                     if line.is_empty() {
                         continue;
                     }
                     
-                    debug!("Received request: {}", line);
+                    tracing::info!("Received request: {}", line);
                     
                     match io.handle_request(&line).await {
                         Some(response) => {
-                            debug!("Sending response: {}", response);
+                            tracing::info!("Sending response: {}", response);
                             stdout.write_all(response.as_bytes()).await?;
                             stdout.write_all(b"\n").await?;
                             stdout.flush().await?;
+                            tracing::debug!("Response sent and flushed");
                         }
                         None => {
-                            error!("No response generated for request: {}", line);
+                            // Check if this is a notification (no id field means it's a notification)
+                            if let Ok(json) = serde_json::from_str::<Value>(&line) {
+                                if json.get("id").is_none() && json.get("method").is_some() {
+                                    tracing::debug!("Processed notification: {}", json.get("method").unwrap());
+                                } else {
+                                    tracing::error!("No response generated for request: {}", line);
+                                }
+                            } else {
+                                tracing::error!("Failed to parse JSON request: {}", line);
+                            }
                         }
                     }
                 }
                 Err(e) => {
-                    error!("Error reading from stdin: {}", e);
+                    tracing::error!("Error reading from stdin: {}", e);
                     break;
                 }
             }
@@ -215,14 +237,34 @@ struct McpServerImpl {
 impl McpServerImpl {
     fn initialize(&self, protocol_version: String, capabilities: Value) -> jsonrpc_core::Result<Value> {
         
-        // Support both MCP protocol versions
-        if protocol_version != "1.0" && protocol_version != "2024-11-05" {
-            return Err(RpcError::invalid_params(format!("Unsupported protocol version: {}", protocol_version)));
+        // List of supported protocol versions
+        const SUPPORTED_VERSIONS: &[&str] = &["1.0", "2024-11-05"];
+        
+        // Check if the requested version is supported
+        let version_supported = SUPPORTED_VERSIONS.contains(&protocol_version.as_str());
+        
+        // If not supported, try to be backward compatible if it's a date-based version
+        // This allows for future protocol versions that follow the YYYY-MM-DD pattern
+        let is_date_version = protocol_version.len() == 10 
+            && protocol_version.chars().nth(4) == Some('-')
+            && protocol_version.chars().nth(7) == Some('-');
+        
+        if !version_supported && !is_date_version {
+            // For truly unsupported versions, return an error with helpful information
+            return Err(RpcError::invalid_params(format!(
+                "Unsupported protocol version: {}. Supported versions: {:?}. Date-based versions (YYYY-MM-DD) are also accepted.",
+                protocol_version, SUPPORTED_VERSIONS
+            )));
         }
+        
+        // Log the protocol version being used
+        tracing::info!("MCP client connected with protocol version: {}", protocol_version);
         
         // Extract client capabilities if provided
         let _client_capabilities = capabilities;
         
+        // Return the same protocol version the client requested
+        // This ensures compatibility with both current and future clients
         Ok(json!({
             "protocolVersion": protocol_version,
             "serverInfo": {

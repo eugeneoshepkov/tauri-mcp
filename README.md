@@ -13,6 +13,7 @@ This server is fully compliant with the [Model Context Protocol specification](h
 - ✅ **Tools** capability with 12 specialized Tauri testing tools
 - ✅ **Proper error handling** with descriptive messages
 - ✅ **Tool schemas** using JSON Schema format
+- ✅ **Protocol version compatibility** - Supports both "1.0" and date-based versions (e.g., "2024-11-05")
 
 For more details about MCP:
 - [MCP Introduction](https://modelcontextprotocol.io/introduction)
@@ -51,6 +52,20 @@ For more details about MCP:
 
 ## Installation
 
+### Using DXT (Recommended for Claude Desktop)
+
+The easiest way to install tauri-mcp for use with Claude Desktop is via DXT (Desktop Extension):
+
+1. Download the latest `tauri-mcp-*.dxt` file from the [releases page](https://github.com/dirvine/tauri-mcp/releases)
+2. Double-click the `.dxt` file to install (or drag it onto Claude Desktop)
+3. The server will be automatically configured and ready to use
+
+### Using Cargo
+
+```bash
+cargo install tauri-mcp
+```
+
 ### From Source
 
 ```bash
@@ -60,12 +75,6 @@ cd tauri-mcp
 
 # Build and install
 cargo install --path .
-```
-
-### Using Cargo
-
-```bash
-cargo install tauri-mcp
 ```
 
 ## Usage

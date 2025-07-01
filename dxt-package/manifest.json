@@ -1,0 +1,22 @@
+{
+  "dxt_version": "0.1",
+  "name": "tauri-mcp",
+  "version": "0.1.5",
+  "description": "MCP server for testing and interacting with Tauri v2 applications",
+  "author": {
+    "name": "David Irvine",
+    "email": "david.irvine@maidsafe.net"
+  },
+  "server": {
+    "type": "binary",
+    "entry_point": "tauri-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/tauri-mcp",
+      "args": [],
+      "env": {
+        "TAURI_MCP_LOG_LEVEL": "info"
+      }
+    }
+  },
+  "license": "MIT OR Apache-2.0"
+}
