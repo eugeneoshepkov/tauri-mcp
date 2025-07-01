@@ -225,24 +225,211 @@ impl TauriMcpServer {
     }
     
     pub async fn execute_tool(&self, tool_name: &str, args_json: &str) -> Result<Value> {
-        let args: Value = serde_json::from_str(args_json)
+        let arguments: Value = serde_json::from_str(args_json)
             .map_err(|e| TauriMcpError::Other(format!("Invalid JSON arguments: {}", e)))?;
         
-        let server_impl = McpServerImpl {
-            process_manager: Arc::clone(&self.process_manager),
-            window_manager: Arc::clone(&self.window_manager),
-            input_simulator: Arc::clone(&self.input_simulator),
-            debug_tools: Arc::clone(&self.debug_tools),
-            ipc_manager: Arc::clone(&self.ipc_manager),
-        };
-        
-        let tool_params = json!({
-            "name": tool_name,
-            "arguments": args
-        });
-        
-        server_impl.call_tool(tool_params)
-            .map_err(|e| TauriMcpError::Other(e.to_string()))
+        // Execute tools directly in async context
+        match tool_name {
+            "launch_app" => {
+                let app_path = arguments.get("app_path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing app_path".to_string()))?
+                    .to_string();
+                
+                let args = arguments.get("args")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+                
+                let mut manager = self.process_manager.write().await;
+                let process_id = manager.launch_app(&app_path, args).await
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(json!({
+                    "process_id": process_id,
+                    "status": "launched"
+                }))
+            },
+            "stop_app" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing process_id".to_string()))?
+                    .to_string();
+                
+                let mut manager = self.process_manager.write().await;
+                manager.stop_app(&process_id).await
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(json!({
+                    "status": "stopped"
+                }))
+            },
+            "get_app_logs" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing process_id".to_string()))?
+                    .to_string();
+                
+                let lines = arguments.get("lines")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize);
+                
+                let manager = self.process_manager.read().await;
+                let logs = manager.get_app_logs(&process_id, lines).await
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(json!({
+                    "logs": logs
+                }))
+            },
+            "take_screenshot" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing process_id".to_string()))?
+                    .to_string();
+                
+                let output_path = arguments.get("output_path")
+                    .and_then(|v| v.as_str())
+                    .map(|p| PathBuf::from(p));
+                
+                let screenshot_data = self.window_manager.take_screenshot(&process_id, output_path).await
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(json!({
+                    "screenshot": screenshot_data
+                }))
+            },
+            "get_window_info" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing process_id".to_string()))?
+                    .to_string();
+                
+                let info = self.window_manager.get_window_info(&process_id).await
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(info)
+            },
+            "send_keyboard_input" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing process_id".to_string()))?
+                    .to_string();
+                
+                let keys = arguments.get("keys")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing keys".to_string()))?
+                    .to_string();
+                
+                self.input_simulator.send_keyboard_input(&process_id, &keys).await
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(json!({
+                    "status": "sent"
+                }))
+            },
+            "send_mouse_click" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing process_id".to_string()))?
+                    .to_string();
+                
+                let x = arguments.get("x")
+                    .and_then(|v| v.as_i64())
+                    .ok_or_else(|| TauriMcpError::Other("Missing x coordinate".to_string()))? as i32;
+                
+                let y = arguments.get("y")
+                    .and_then(|v| v.as_i64())
+                    .ok_or_else(|| TauriMcpError::Other("Missing y coordinate".to_string()))? as i32;
+                
+                let button = arguments.get("button")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("left")
+                    .to_string();
+                
+                self.input_simulator.send_mouse_click(&process_id, x, y, &button).await
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(json!({
+                    "status": "clicked"
+                }))
+            },
+            "execute_js" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing process_id".to_string()))?
+                    .to_string();
+                
+                let javascript_code = arguments.get("javascript_code")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing javascript_code".to_string()))?
+                    .to_string();
+                
+                let result = self.debug_tools.execute_js(&process_id, &javascript_code).await
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(json!({
+                    "result": result
+                }))
+            },
+            "get_devtools_info" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing process_id".to_string()))?
+                    .to_string();
+                
+                let info = self.debug_tools.get_devtools_info(&process_id).await
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(info)
+            },
+            "monitor_resources" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing process_id".to_string()))?
+                    .to_string();
+                
+                let manager = self.process_manager.read().await;
+                let resources = manager.monitor_resources(&process_id).await
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(resources)
+            },
+            "list_ipc_handlers" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing process_id".to_string()))?
+                    .to_string();
+                
+                let handlers = self.ipc_manager.list_ipc_handlers(&process_id).await
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(json!({
+                    "handlers": handlers
+                }))
+            },
+            "call_ipc_command" => {
+                let process_id = arguments.get("process_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing process_id".to_string()))?
+                    .to_string();
+                
+                let command_name = arguments.get("command_name")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| TauriMcpError::Other("Missing command_name".to_string()))?
+                    .to_string();
+                
+                let args = arguments.get("args")
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                
+                let result = self.ipc_manager.call_ipc_command(&process_id, &command_name, args).await
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(result)
+            },
+            _ => Err(TauriMcpError::Other(format!("Unknown tool: {}", tool_name)))
+        }
     }
 }
 
