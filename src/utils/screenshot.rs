@@ -1,6 +1,6 @@
 use crate::{Result, TauriMcpError};
 use image::{DynamicImage, ImageFormat};
-use screenshots::{Screen, Image};
+use screenshots::Screen;
 use std::io::Cursor;
 
 pub fn capture_screen_area(x: i32, y: i32, width: u32, height: u32) -> Result<DynamicImage> {
@@ -37,14 +37,8 @@ pub fn capture_full_screen() -> Result<DynamicImage> {
     image_to_dynamic(image)
 }
 
-fn image_to_dynamic(image: Image) -> Result<DynamicImage> {
-    let buffer = image.to_png()
-        .map_err(|e| TauriMcpError::ScreenshotError(format!("Failed to convert to PNG: {}", e)))?;
-    
-    let img = image::load_from_memory(&buffer)
-        .map_err(|e| TauriMcpError::ScreenshotError(format!("Failed to load image: {}", e)))?;
-    
-    Ok(img)
+fn image_to_dynamic(image: screenshots::image::RgbaImage) -> Result<DynamicImage> {
+    Ok(DynamicImage::ImageRgba8(image))
 }
 
 pub fn image_to_base64(image: &DynamicImage) -> Result<String> {

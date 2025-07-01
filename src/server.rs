@@ -48,40 +48,46 @@ impl Default for ServerConfig {
 
 #[rpc]
 pub trait TauriMcp {
-    #[rpc(name = "launch_app")]
+    #[rpc(name = "initialize", returns = "Value")]
+    fn initialize(&self, protocol_version: String, capabilities: Value) -> jsonrpc_core::Result<Value>;
+    
+    #[rpc(name = "shutdown", returns = "Value")]
+    fn shutdown(&self) -> jsonrpc_core::Result<Value>;
+    
+    #[rpc(name = "launch_app", returns = "Value")]
     fn launch_app(&self, app_path: String, args: Option<Vec<String>>) -> jsonrpc_core::Result<Value>;
     
-    #[rpc(name = "stop_app")]
+    #[rpc(name = "stop_app", returns = "Value")]
     fn stop_app(&self, process_id: String) -> jsonrpc_core::Result<Value>;
     
-    #[rpc(name = "get_app_logs")]
+    #[rpc(name = "get_app_logs", returns = "Value")]
     fn get_app_logs(&self, process_id: String, lines: Option<usize>) -> jsonrpc_core::Result<Value>;
     
-    #[rpc(name = "take_screenshot")]
+    #[rpc(name = "take_screenshot", returns = "Value")]
     fn take_screenshot(&self, process_id: String, output_path: Option<String>) -> jsonrpc_core::Result<Value>;
     
-    #[rpc(name = "get_window_info")]
+    #[rpc(name = "get_window_info", returns = "Value")]
     fn get_window_info(&self, process_id: String) -> jsonrpc_core::Result<Value>;
     
-    #[rpc(name = "send_keyboard_input")]
+    #[rpc(name = "send_keyboard_input", returns = "Value")]
     fn send_keyboard_input(&self, process_id: String, keys: String) -> jsonrpc_core::Result<Value>;
     
-    #[rpc(name = "send_mouse_click")]
+    #[rpc(name = "send_mouse_click", returns = "Value")]
     fn send_mouse_click(&self, process_id: String, x: i32, y: i32, button: Option<String>) -> jsonrpc_core::Result<Value>;
     
-    #[rpc(name = "execute_js")]
+    #[rpc(name = "execute_js", returns = "Value")]
     fn execute_js(&self, process_id: String, javascript_code: String) -> jsonrpc_core::Result<Value>;
     
-    #[rpc(name = "get_devtools_info")]
+    #[rpc(name = "get_devtools_info", returns = "Value")]
     fn get_devtools_info(&self, process_id: String) -> jsonrpc_core::Result<Value>;
     
-    #[rpc(name = "monitor_resources")]
+    #[rpc(name = "monitor_resources", returns = "Value")]
     fn monitor_resources(&self, process_id: String) -> jsonrpc_core::Result<Value>;
     
-    #[rpc(name = "list_ipc_handlers")]
+    #[rpc(name = "list_ipc_handlers", returns = "Value")]
     fn list_ipc_handlers(&self, process_id: String) -> jsonrpc_core::Result<Value>;
     
-    #[rpc(name = "call_ipc_command")]
+    #[rpc(name = "call_ipc_command", returns = "Value")]
     fn call_ipc_command(&self, process_id: String, command_name: String, args: Option<Value>) -> jsonrpc_core::Result<Value>;
 }
 
@@ -94,7 +100,7 @@ impl TauriMcpServer {
             ServerConfig::default()
         };
         
-        info!("Initializing Tauri MCP server with config: {:?}", config);
+        debug!("Initializing Tauri MCP server with config: {:?}", config);
         
         Ok(Self {
             process_manager: Arc::new(RwLock::new(ProcessManager::new())),
@@ -107,7 +113,7 @@ impl TauriMcpServer {
     }
     
     pub async fn serve(&self, host: &str, port: u16) -> Result<()> {
-        info!("Starting MCP server on {}:{}", host, port);
+        debug!("Starting MCP server on {}:{}", host, port);
         
         let mut io = IoHandler::new();
         
@@ -126,7 +132,7 @@ impl TauriMcpServer {
         let mut reader = BufReader::new(stdin);
         let mut stdout = stdout;
         
-        info!("MCP server ready, waiting for JSON-RPC requests on stdin");
+        debug!("MCP server ready, waiting for JSON-RPC requests on stdin");
         
         loop {
             let mut line = String::new();
@@ -175,6 +181,35 @@ struct McpServerImpl {
 }
 
 impl TauriMcp for McpServerImpl {
+    fn initialize(&self, protocol_version: String, capabilities: Value) -> jsonrpc_core::Result<Value> {
+        if protocol_version != "1.0" {
+            return Err(RpcError::invalid_params(format!("Unsupported protocol version: {}", protocol_version)));
+        }
+        
+        Ok(json!({
+            "protocol_version": "1.0",
+            "server_info": {
+                "name": "tauri-mcp",
+                "version": env!("CARGO_PKG_VERSION"),
+                "description": "MCP server for testing and interacting with Tauri v2 applications"
+            },
+            "capabilities": {
+                "tools": true,
+                "resources": false,
+                "prompts": false,
+                "logging": true,
+                "progress": true
+            }
+        }))
+    }
+    
+    fn shutdown(&self) -> jsonrpc_core::Result<Value> {
+        // Cleanup would happen here
+        Ok(json!({
+            "status": "shutdown"
+        }))
+    }
+    
     fn launch_app(&self, app_path: String, args: Option<Vec<String>>) -> jsonrpc_core::Result<Value> {
         let process_manager = Arc::clone(&self.process_manager);
         let args = args.unwrap_or_default();

@@ -1,33 +1,32 @@
 use crate::{Result, TauriMcpError};
-use enigo::{Enigo, Key, KeyboardControllable, MouseButton, MouseControllable};
+use enigo::{Enigo, Key, Settings, Button, Coordinate, Direction::Click, Keyboard, Mouse, Axis};
 use std::thread;
 use std::time::Duration;
 use tracing::{debug, info};
 
-pub struct InputSimulator {
-    enigo: Enigo,
-}
+pub struct InputSimulator {}
 
 impl InputSimulator {
     pub fn new() -> Self {
-        Self {
-            enigo: Enigo::new(),
-        }
+        Self {}
     }
     
     pub async fn send_keyboard_input(&self, process_id: &str, keys: &str) -> Result<()> {
         info!("Sending keyboard input to process {}: {}", process_id, keys);
         
         let keys_to_send = keys.to_string();
+        let settings = Settings::default();
         
         tokio::task::spawn_blocking(move || {
-            let mut enigo = Enigo::new();
+            let mut enigo = Enigo::new(&settings)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to create Enigo: {:?}", e)))?;
             
             if keys_to_send.starts_with("cmd+") || keys_to_send.starts_with("ctrl+") {
                 Self::send_key_combination(&mut enigo, &keys_to_send)?;
             } else {
                 for ch in keys_to_send.chars() {
-                    enigo.key_sequence(&ch.to_string());
+                    enigo.text(&ch.to_string())
+                        .map_err(|e| TauriMcpError::InputError(format!("Failed to send text: {:?}", e)))?;
                     thread::sleep(Duration::from_millis(10));
                 }
             }
@@ -44,19 +43,24 @@ impl InputSimulator {
         info!("Sending mouse click to process {} at ({}, {}), button: {}", process_id, x, y, button);
         
         let button_to_click = match button.to_lowercase().as_str() {
-            "left" => MouseButton::Left,
-            "right" => MouseButton::Right,
-            "middle" => MouseButton::Middle,
+            "left" => Button::Left,
+            "right" => Button::Right,
+            "middle" => Button::Middle,
             _ => return Err(TauriMcpError::InputError(format!("Invalid mouse button: {}", button))),
         };
         
+        let settings = Settings::default();
+        
         tokio::task::spawn_blocking(move || {
-            let mut enigo = Enigo::new();
+            let mut enigo = Enigo::new(&settings)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to create Enigo: {:?}", e)))?;
             
-            enigo.mouse_move_to(x, y);
+            enigo.move_mouse(x, y, Coordinate::Abs)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to move mouse: {:?}", e)))?;
             thread::sleep(Duration::from_millis(50));
             
-            enigo.mouse_click(button_to_click);
+            enigo.button(button_to_click, Click)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to click: {:?}", e)))?;
             
             Ok::<(), TauriMcpError>(())
         })
@@ -69,9 +73,13 @@ impl InputSimulator {
     pub async fn send_mouse_move(&self, process_id: &str, x: i32, y: i32) -> Result<()> {
         info!("Moving mouse for process {} to ({}, {})", process_id, x, y);
         
+        let settings = Settings::default();
+        
         tokio::task::spawn_blocking(move || {
-            let mut enigo = Enigo::new();
-            enigo.mouse_move_to(x, y);
+            let mut enigo = Enigo::new(&settings)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to create Enigo: {:?}", e)))?;
+            enigo.move_mouse(x, y, Coordinate::Abs)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to move mouse: {:?}", e)))?;
             Ok::<(), TauriMcpError>(())
         })
         .await
@@ -84,13 +92,18 @@ impl InputSimulator {
         info!("Dragging mouse for process {} from ({}, {}) to ({}, {})", 
               process_id, start_x, start_y, end_x, end_y);
         
+        let settings = Settings::default();
+        
         tokio::task::spawn_blocking(move || {
-            let mut enigo = Enigo::new();
+            let mut enigo = Enigo::new(&settings)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to create Enigo: {:?}", e)))?;
             
-            enigo.mouse_move_to(start_x, start_y);
+            enigo.move_mouse(start_x, start_y, Coordinate::Abs)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to move mouse: {:?}", e)))?;
             thread::sleep(Duration::from_millis(50));
             
-            enigo.mouse_down(MouseButton::Left);
+            enigo.button(Button::Left, enigo::Direction::Press)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to press button: {:?}", e)))?;
             thread::sleep(Duration::from_millis(50));
             
             let steps = 10;
@@ -100,11 +113,13 @@ impl InputSimulator {
             for i in 1..=steps {
                 let x = start_x + (dx * i as f32) as i32;
                 let y = start_y + (dy * i as f32) as i32;
-                enigo.mouse_move_to(x, y);
+                enigo.move_mouse(x, y, Coordinate::Abs)
+                    .map_err(|e| TauriMcpError::InputError(format!("Failed to move mouse: {:?}", e)))?;
                 thread::sleep(Duration::from_millis(20));
             }
             
-            enigo.mouse_up(MouseButton::Left);
+            enigo.button(Button::Left, enigo::Direction::Release)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to release button: {:?}", e)))?;
             
             Ok::<(), TauriMcpError>(())
         })
@@ -117,13 +132,18 @@ impl InputSimulator {
     pub async fn send_mouse_scroll(&self, process_id: &str, x: i32, y: i32, delta: i32) -> Result<()> {
         info!("Scrolling mouse for process {} at ({}, {}), delta: {}", process_id, x, y, delta);
         
+        let settings = Settings::default();
+        
         tokio::task::spawn_blocking(move || {
-            let mut enigo = Enigo::new();
+            let mut enigo = Enigo::new(&settings)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to create Enigo: {:?}", e)))?;
             
-            enigo.mouse_move_to(x, y);
+            enigo.move_mouse(x, y, Coordinate::Abs)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to move mouse: {:?}", e)))?;
             thread::sleep(Duration::from_millis(50));
             
-            enigo.mouse_scroll_y(delta);
+            enigo.scroll(delta, Axis::Vertical)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to scroll: {:?}", e)))?;
             
             Ok::<(), TauriMcpError>(())
         })
@@ -159,17 +179,20 @@ impl InputSimulator {
         }
         
         for key in &modifier_keys {
-            enigo.key_down(*key);
+            enigo.key(*key, enigo::Direction::Press)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to press key: {:?}", e)))?;
             thread::sleep(Duration::from_millis(10));
         }
         
         if let Some(key) = main_key {
-            enigo.key_click(key);
+            enigo.key(key, Click)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to click key: {:?}", e)))?;
             thread::sleep(Duration::from_millis(10));
         }
         
         for key in modifier_keys.iter().rev() {
-            enigo.key_up(*key);
+            enigo.key(*key, enigo::Direction::Release)
+                .map_err(|e| TauriMcpError::InputError(format!("Failed to release key: {:?}", e)))?;
             thread::sleep(Duration::from_millis(10));
         }
         
@@ -178,32 +201,32 @@ impl InputSimulator {
     
     fn string_to_key(s: &str) -> Result<Key> {
         match s {
-            "a" => Ok(Key::Layout('a')),
-            "b" => Ok(Key::Layout('b')),
-            "c" => Ok(Key::Layout('c')),
-            "d" => Ok(Key::Layout('d')),
-            "e" => Ok(Key::Layout('e')),
-            "f" => Ok(Key::Layout('f')),
-            "g" => Ok(Key::Layout('g')),
-            "h" => Ok(Key::Layout('h')),
-            "i" => Ok(Key::Layout('i')),
-            "j" => Ok(Key::Layout('j')),
-            "k" => Ok(Key::Layout('k')),
-            "l" => Ok(Key::Layout('l')),
-            "m" => Ok(Key::Layout('m')),
-            "n" => Ok(Key::Layout('n')),
-            "o" => Ok(Key::Layout('o')),
-            "p" => Ok(Key::Layout('p')),
-            "q" => Ok(Key::Layout('q')),
-            "r" => Ok(Key::Layout('r')),
-            "s" => Ok(Key::Layout('s')),
-            "t" => Ok(Key::Layout('t')),
-            "u" => Ok(Key::Layout('u')),
-            "v" => Ok(Key::Layout('v')),
-            "w" => Ok(Key::Layout('w')),
-            "x" => Ok(Key::Layout('x')),
-            "y" => Ok(Key::Layout('y')),
-            "z" => Ok(Key::Layout('z')),
+            "a" => Ok(Key::Unicode('a')),
+            "b" => Ok(Key::Unicode('b')),
+            "c" => Ok(Key::Unicode('c')),
+            "d" => Ok(Key::Unicode('d')),
+            "e" => Ok(Key::Unicode('e')),
+            "f" => Ok(Key::Unicode('f')),
+            "g" => Ok(Key::Unicode('g')),
+            "h" => Ok(Key::Unicode('h')),
+            "i" => Ok(Key::Unicode('i')),
+            "j" => Ok(Key::Unicode('j')),
+            "k" => Ok(Key::Unicode('k')),
+            "l" => Ok(Key::Unicode('l')),
+            "m" => Ok(Key::Unicode('m')),
+            "n" => Ok(Key::Unicode('n')),
+            "o" => Ok(Key::Unicode('o')),
+            "p" => Ok(Key::Unicode('p')),
+            "q" => Ok(Key::Unicode('q')),
+            "r" => Ok(Key::Unicode('r')),
+            "s" => Ok(Key::Unicode('s')),
+            "t" => Ok(Key::Unicode('t')),
+            "u" => Ok(Key::Unicode('u')),
+            "v" => Ok(Key::Unicode('v')),
+            "w" => Ok(Key::Unicode('w')),
+            "x" => Ok(Key::Unicode('x')),
+            "y" => Ok(Key::Unicode('y')),
+            "z" => Ok(Key::Unicode('z')),
             "enter" | "return" => Ok(Key::Return),
             "tab" => Ok(Key::Tab),
             "space" => Ok(Key::Space),

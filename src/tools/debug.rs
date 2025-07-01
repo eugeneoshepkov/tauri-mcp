@@ -255,7 +255,7 @@ impl DebugTools {
         }))
     }
     
-    async fn find_debug_port(&self, process_id: &str) -> Result<u16> {
+    async fn find_debug_port(&self, _process_id: &str) -> Result<u16> {
         for port in 9222..9250 {
             let url = format!("http://localhost:{}/json/version", port);
             if let Ok(response) = self.client.get(&url).send().await {

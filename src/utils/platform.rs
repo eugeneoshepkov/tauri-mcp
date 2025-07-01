@@ -6,15 +6,16 @@ pub fn get_window_by_pid(pid: u32) -> Result<Option<u64>> {
 }
 
 #[cfg(target_os = "windows")]
+struct EnumData {
+    target_pid: u32,
+    window: Option<windows::Win32::Foundation::HWND>,
+}
+
+#[cfg(target_os = "windows")]
 pub fn get_window_by_pid(pid: u32) -> Result<Option<windows::Win32::Foundation::HWND>> {
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowThreadProcessId};
+    use windows::Win32::UI::WindowsAndMessaging::EnumWindows;
     use std::sync::Mutex;
-    
-    struct EnumData {
-        target_pid: u32,
-        window: Option<HWND>,
-    }
     
     let data = Mutex::new(EnumData {
         target_pid: pid,
@@ -30,19 +31,23 @@ pub fn get_window_by_pid(pid: u32) -> Result<Option<windows::Win32::Foundation::
     
     let result = data.lock().unwrap();
     Ok(result.window)
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn enum_window_callback(hwnd: HWND, lparam: isize) -> i32 {
+    use std::sync::Mutex;
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
     
-    unsafe extern "system" fn enum_window_callback(hwnd: HWND, lparam: isize) -> i32 {
-        let data = &*(lparam as *const Mutex<EnumData>);
-        let mut process_id = 0u32;
-        GetWindowThreadProcessId(hwnd, Some(&mut process_id));
-        
-        let mut enum_data = data.lock().unwrap();
-        if process_id == enum_data.target_pid {
-            enum_data.window = Some(hwnd);
-            return 0;
-        }
-        1
+    let data = &*(lparam as *const Mutex<EnumData>);
+    let mut process_id = 0u32;
+    GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+    
+    let mut enum_data = data.lock().unwrap();
+    if process_id == enum_data.target_pid {
+        enum_data.window = Some(hwnd);
+        return 0;
     }
+    1
 }
 
 #[cfg(target_os = "linux")]

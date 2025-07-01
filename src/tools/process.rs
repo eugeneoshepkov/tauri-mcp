@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
-use sysinfo::{System, Pid, ProcessExt, SystemExt};
+use sysinfo::{System, Pid};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::task::JoinHandle;
@@ -117,23 +117,24 @@ impl ProcessManager {
             .ok_or_else(|| TauriMcpError::ProcessError(format!("Process not found: {}", process_id)))?;
         
         let mut system = self.system.write();
-        system.refresh_process(Pid::from(process_info.pid as usize));
+        system.refresh_processes();
         
-        let process = system.process(Pid::from(process_info.pid as usize))
-            .ok_or_else(|| TauriMcpError::ProcessError("Failed to get process info".to_string()))?;
-        
-        Ok(serde_json::json!({
-            "cpu_usage": process.cpu_usage(),
-            "memory_usage": process.memory(),
-            "virtual_memory": process.virtual_memory(),
-            "disk_usage": {
-                "read_bytes": process.disk_usage().read_bytes,
-                "written_bytes": process.disk_usage().written_bytes,
-            },
-            "status": format!("{:?}", process.status()),
-            "start_time": process.start_time(),
-            "run_time": process.run_time(),
-        }))
+        if let Some(process) = system.process(Pid::from_u32(process_info.pid)) {
+            Ok(serde_json::json!({
+                "cpu_usage": process.cpu_usage(),
+                "memory_usage": process.memory(),
+                "virtual_memory": process.virtual_memory(),
+                "disk_usage": {
+                    "read_bytes": process.disk_usage().read_bytes,
+                    "written_bytes": process.disk_usage().written_bytes,
+                },
+                "status": format!("{:?}", process.status()),
+                "start_time": process.start_time(),
+                "run_time": process.run_time(),
+            }))
+        } else {
+            Err(TauriMcpError::ProcessError("Failed to get process info".to_string()))
+        }
     }
     
     async fn log_reader(
