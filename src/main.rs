@@ -72,6 +72,14 @@ enum Command {
         #[arg(long, default_value = "3000", help = "Port to bind to")]
         port: u16,
     },
+    #[command(about = "Execute a specific tool (for Node.js wrapper)")]
+    Tool {
+        #[arg(help = "Tool name to execute")]
+        name: String,
+        
+        #[arg(help = "JSON arguments for the tool")]
+        args: String,
+    },
 }
 
 #[tokio::main]
@@ -105,6 +113,12 @@ async fn main() -> Result<()> {
         Some(Command::Serve { host, port }) => {
             // In serve mode, don't print anything to stdout - it's used for JSON-RPC
             server.serve(&host, port).await?;
+        }
+        Some(Command::Tool { name, args }) => {
+            // Tool mode - execute a specific tool and return JSON result
+            let result = server.execute_tool(&name, &args).await?;
+            // Print JSON result to stdout for Node.js wrapper
+            println!("{}", serde_json::to_string(&result)?);
         }
         None => {
             // Default to serve mode without printing anything

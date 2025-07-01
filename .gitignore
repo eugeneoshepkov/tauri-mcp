@@ -25,3 +25,17 @@ test-output/
 # Config files (except example)
 tauri-mcp.toml
 !tauri-mcp.example.toml
+
+# Build artifacts
+*.dxt
+dxt-package/
+dxt-package-node/
+dxt-package-flat/
+test-dxt/
+test-extract/
+
+# Node.js
+node_modules/
+package-lock.json
+server/node_modules/
+server/package-lock.json

@@ -56,15 +56,24 @@ For more details about MCP:
 
 The easiest way to install tauri-mcp for use with Claude Desktop is via DXT (Desktop Extension):
 
-1. Download the latest `tauri-mcp-*.dxt` file from the [releases page](https://github.com/dirvine/tauri-mcp/releases)
+1. Download the latest `tauri-mcp-node-*.dxt` file from the [releases page](https://github.com/dirvine/tauri-mcp/releases)
 2. Double-click the `.dxt` file to install (or drag it onto Claude Desktop)
 3. The server will be automatically configured and ready to use
+
+**Note**: Due to a [known issue](https://github.com/anthropics/dxt/issues/18) with Claude Desktop's DXT extraction, we provide a Node.js wrapper version (`tauri-mcp-node-*.dxt`) that works around this limitation.
 
 ### Using Cargo
 
 ```bash
 cargo install tauri-mcp
 ```
+
+**Important Note for Rust-based MCP Servers**: Claude Desktop currently has [compatibility issues](https://github.com/dirvine/tauri-mcp/issues/1) with Rust-based MCP servers, causing immediate disconnections after initialization. This is a known issue affecting all non-Node.js MCP servers. The cargo installation is suitable for:
+- Direct CLI usage
+- Integration with other tools
+- Development and testing
+
+For use with Claude Desktop, please use the DXT package which includes a Node.js wrapper.
 
 ### From Source
 
@@ -113,14 +122,20 @@ network_interception = false
 
 ### Claude Desktop Configuration
 
-Add to your Claude Desktop configuration:
+#### Option 1: Using DXT Package (Recommended)
+
+Install the `tauri-mcp-node-*.dxt` package by double-clicking it. The server will be automatically configured.
+
+#### Option 2: Manual Configuration
+
+If you need to configure manually or use the development version, add to your Claude Desktop configuration:
 
 ```json
 {
   "mcpServers": {
     "tauri-mcp": {
-      "command": "tauri-mcp",
-      "args": ["serve"],
+      "command": "node",
+      "args": ["/path/to/tauri-mcp/server/index.js"],
       "env": {
         "TAURI_MCP_LOG_LEVEL": "info"
       }
@@ -128,6 +143,8 @@ Add to your Claude Desktop configuration:
   }
 }
 ```
+
+**Note**: Direct Rust binary configuration (`"command": "tauri-mcp"`) will not work with Claude Desktop due to compatibility issues. Use the Node.js wrapper approach shown above.
 
 ### Available MCP Tools
 
@@ -179,6 +196,77 @@ cargo build --release
 # Run tests
 cargo test
 ```
+
+### Building DXT Packages
+
+The project includes build scripts for creating DXT (Desktop Extension) packages for different platforms.
+
+#### Prerequisites
+
+- Rust toolchain installed
+- Node.js 18+ (for the Node.js wrapper)
+- `zip` command available in PATH
+
+#### Building on macOS/Linux
+
+```bash
+# Build the Node.js wrapper version (recommended)
+./build-dxt-node.sh
+
+# The DXT package will be created as tauri-mcp-node-*.dxt
+```
+
+#### Building on Windows
+
+```powershell
+# Create a Windows build script or use WSL
+# Ensure you have zip.exe available or use PowerShell's Compress-Archive
+
+# Build release binary
+cargo build --release
+
+# Create package directory structure
+mkdir dxt-package-node
+mkdir dxt-package-node\server
+
+# Copy files
+copy target\release\tauri-mcp.exe dxt-package-node\
+copy server\*.* dxt-package-node\server\
+copy manifest-node.json dxt-package-node\manifest.json
+
+# Install Node dependencies
+cd dxt-package-node\server
+npm install --production
+cd ..\..
+
+# Create DXT archive (using PowerShell)
+Compress-Archive -Path dxt-package-node\* -DestinationPath tauri-mcp-node.zip
+Rename-Item tauri-mcp-node.zip tauri-mcp-node-0.1.8.dxt
+```
+
+#### DXT Package Structure
+
+The DXT package includes:
+- `manifest.json` - Extension metadata and configuration
+- `tauri-mcp` - The compiled Rust binary
+- `server/` - Node.js wrapper and dependencies
+  - `index.js` - Node.js MCP server that spawns the Rust binary
+  - `package.json` - Node.js dependencies
+  - `node_modules/` - MCP SDK and dependencies
+
+#### Important Notes
+
+1. **Use `--no-dir-entries` flag**: When creating the zip file, use the `--no-dir-entries` flag to avoid [extraction issues](https://github.com/anthropics/dxt/issues/18):
+   ```bash
+   zip -r package.dxt . --no-dir-entries
+   ```
+
+2. **Binary permissions**: Ensure the Rust binary has executable permissions before packaging:
+   ```bash
+   chmod +x tauri-mcp
+   ```
+
+3. **Cross-platform builds**: For distributing to other platforms, you'll need to build the Rust binary on each target platform or use cross-compilation.
 
 ### Project Structure
 

@@ -1,0 +1,16 @@
+{
+  "name": "tauri-mcp-server",
+  "version": "0.1.8",
+  "description": "Node.js MCP server wrapper for tauri-mcp",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

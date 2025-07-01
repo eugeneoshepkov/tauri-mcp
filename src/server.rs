@@ -223,6 +223,27 @@ impl TauriMcpServer {
         
         Ok(())
     }
+    
+    pub async fn execute_tool(&self, tool_name: &str, args_json: &str) -> Result<Value> {
+        let args: Value = serde_json::from_str(args_json)
+            .map_err(|e| TauriMcpError::Other(format!("Invalid JSON arguments: {}", e)))?;
+        
+        let server_impl = McpServerImpl {
+            process_manager: Arc::clone(&self.process_manager),
+            window_manager: Arc::clone(&self.window_manager),
+            input_simulator: Arc::clone(&self.input_simulator),
+            debug_tools: Arc::clone(&self.debug_tools),
+            ipc_manager: Arc::clone(&self.ipc_manager),
+        };
+        
+        let tool_params = json!({
+            "name": tool_name,
+            "arguments": args
+        });
+        
+        server_impl.call_tool(tool_params)
+            .map_err(|e| TauriMcpError::Other(e.to_string()))
+    }
 }
 
 #[derive(Clone)]
