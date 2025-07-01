@@ -1,6 +1,23 @@
 # Tauri MCP Server
 
-A Model Context Protocol (MCP) server for testing and interacting with Tauri v2 applications. This tool enables AI assistants to better understand, debug, and interact with Tauri apps during development.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) server for testing and interacting with Tauri v2 applications. This tool enables AI assistants to better understand, debug, and interact with Tauri apps during development.
+
+The MCP protocol provides a standardized way for AI assistants to interact with external tools and systems. This server implements the MCP specification to expose Tauri application testing and debugging capabilities.
+
+## MCP Compliance
+
+This server is fully compliant with the [Model Context Protocol specification](https://modelcontextprotocol.io/introduction). It implements:
+
+- ✅ **JSON-RPC 2.0** transport over stdio
+- ✅ **Initialize/shutdown** handshake
+- ✅ **Tools** capability with 12 specialized Tauri testing tools
+- ✅ **Proper error handling** with descriptive messages
+- ✅ **Tool schemas** using JSON Schema format
+
+For more details about MCP:
+- [MCP Introduction](https://modelcontextprotocol.io/introduction)
+- [Building MCP Servers](https://modelcontextprotocol.io/docs/concepts/servers)
+- [Tool Definitions](https://modelcontextprotocol.io/docs/concepts/tools)
 
 ## Features
 
@@ -274,7 +291,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-- Built with the [MCP SDK](https://github.com/anthropics/mcp-sdk)
+- Implements the [Model Context Protocol](https://modelcontextprotocol.io/) specification
 - Designed for [Tauri v2](https://tauri.app/) applications
 - Input simulation powered by [enigo](https://github.com/enigo-rs/enigo)
 - Screenshot functionality via [screenshots-rs](https://github.com/nashaofu/screenshots-rs)
