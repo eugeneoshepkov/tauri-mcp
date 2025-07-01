@@ -215,8 +215,8 @@ struct McpServerImpl {
 impl McpServerImpl {
     fn initialize(&self, protocol_version: String, capabilities: Value) -> jsonrpc_core::Result<Value> {
         
-        // For now, we only support version 1.0
-        if protocol_version != "1.0" {
+        // Support both MCP protocol versions
+        if protocol_version != "1.0" && protocol_version != "2024-11-05" {
             return Err(RpcError::invalid_params(format!("Unsupported protocol version: {}", protocol_version)));
         }
         
@@ -224,7 +224,7 @@ impl McpServerImpl {
         let _client_capabilities = capabilities;
         
         Ok(json!({
-            "protocolVersion": "1.0",
+            "protocolVersion": protocol_version,
             "serverInfo": {
                 "name": "tauri-mcp",
                 "version": env!("CARGO_PKG_VERSION"),
