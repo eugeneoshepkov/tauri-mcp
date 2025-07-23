@@ -143,6 +143,8 @@ impl TauriMcpServer {
             ("monitor_resources", "process_id", ""),
             ("list_ipc_handlers", "process_id", ""),
             ("call_ipc_command", "process_id", "command_name,args"),
+            ("find_running_apps", "", ""),
+            ("attach_to_app", "pid", ""),
         ];
         
         for (method_name, _, _) in tool_methods {
@@ -428,6 +430,29 @@ impl TauriMcpServer {
                 
                 Ok(result)
             },
+            "find_running_apps" => {
+                let manager = self.process_manager.read().await;
+                let apps = manager.find_running_apps()
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(json!({
+                    "apps": apps
+                }))
+            },
+            "attach_to_app" => {
+                let pid = arguments.get("pid")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| TauriMcpError::Other("Missing pid".to_string()))? as u32;
+                
+                let mut manager = self.process_manager.write().await;
+                let process_id = manager.attach_to_app(pid).await
+                    .map_err(|e| TauriMcpError::Other(e.to_string()))?;
+                
+                Ok(json!({
+                    "process_id": process_id,
+                    "status": "attached"
+                }))
+            },
             _ => Err(TauriMcpError::Other(format!("Unknown tool: {}", tool_name)))
         }
     }
@@ -484,9 +509,9 @@ impl McpServerImpl {
                 "tools": {
                     "listTools": true
                 },
-                "resources": null,
-                "prompts": null,
-                "logging": null
+                "resources": {},
+                "prompts": {},
+                "logging": {}
             }
         }))
     }
@@ -691,6 +716,41 @@ impl McpServerImpl {
         }
     }
     
+    fn find_running_apps(&self) -> jsonrpc_core::Result<Value> {
+        let process_manager = Arc::clone(&self.process_manager);
+        
+        let runtime = tokio::runtime::Handle::current();
+        let result = runtime.block_on(async {
+            let manager = process_manager.read().await;
+            manager.find_running_apps()
+        });
+        
+        match result {
+            Ok(apps) => Ok(json!({
+                "apps": apps
+            })),
+            Err(e) => Err(RpcError::invalid_params(e.to_string())),
+        }
+    }
+    
+    fn attach_to_app(&self, pid: u32) -> jsonrpc_core::Result<Value> {
+        let process_manager = Arc::clone(&self.process_manager);
+        
+        let runtime = tokio::runtime::Handle::current();
+        let result = runtime.block_on(async {
+            let mut manager = process_manager.write().await;
+            manager.attach_to_app(pid).await
+        });
+        
+        match result {
+            Ok(process_id) => Ok(json!({
+                "process_id": process_id,
+                "status": "attached"
+            })),
+            Err(e) => Err(RpcError::invalid_params(e.to_string())),
+        }
+    }
+    
     fn list_tools(&self) -> jsonrpc_core::Result<Value> {
         Ok(json!({
             "tools": [
@@ -834,6 +894,25 @@ impl McpServerImpl {
                             "args": { "type": "object", "description": "Arguments to pass to the command" }
                         },
                         "required": ["process_id", "command_name"]
+                    }
+                },
+                {
+                    "name": "find_running_apps",
+                    "description": "Find running Tauri applications on the system",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                },
+                {
+                    "name": "attach_to_app",
+                    "description": "Attach to an already running Tauri application by PID",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "pid": { "type": "number", "description": "Process ID of the running app" }
+                        },
+                        "required": ["pid"]
                     }
                 }
             ]
@@ -986,6 +1065,16 @@ impl McpServerImpl {
                 let args = arguments.get("args").cloned();
                 
                 self.call_ipc_command(process_id, command_name, args)
+            },
+            "find_running_apps" => {
+                self.find_running_apps()
+            },
+            "attach_to_app" => {
+                let pid = arguments.get("pid")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| RpcError::invalid_params("Missing pid"))? as u32;
+                
+                self.attach_to_app(pid)
             },
             _ => Err(RpcError::method_not_found())
         }

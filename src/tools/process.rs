@@ -20,10 +20,11 @@ pub struct ProcessManager {
 
 struct ProcessInfo {
     id: String,
-    child: Child,
+    child: Option<Child>,
     pid: u32,
     log_receiver: Receiver<String>,
     log_handle: JoinHandle<()>,
+    is_attached: bool,
 }
 
 impl ProcessManager {
@@ -67,10 +68,11 @@ impl ProcessManager {
         
         let process_info = ProcessInfo {
             id: process_id.clone(),
-            child,
+            child: Some(child),
             pid,
             log_receiver,
             log_handle,
+            is_attached: false,
         };
         
         self.processes.insert(process_id.clone(), process_info);
@@ -86,8 +88,14 @@ impl ProcessManager {
         
         info!("Stopping app with process ID: {}", process_id);
         
-        process_info.child.kill().await
-            .map_err(|e| TauriMcpError::ProcessError(format!("Failed to kill process: {}", e)))?;
+        if let Some(mut child) = process_info.child {
+            child.kill().await
+                .map_err(|e| TauriMcpError::ProcessError(format!("Failed to kill process: {}", e)))?;
+        } else if process_info.is_attached {
+            // For attached processes, we can't kill them directly
+            warn!("Cannot stop attached process {}, it was not launched by us", process_id);
+            return Err(TauriMcpError::ProcessError("Cannot stop externally launched process".to_string()));
+        }
         
         process_info.log_handle.abort();
         
@@ -173,5 +181,70 @@ impl ProcessManager {
     
     pub fn get_running_processes(&self) -> Vec<String> {
         self.processes.keys().cloned().collect()
+    }
+    
+    pub fn find_running_apps(&self) -> Result<Vec<Value>> {
+        let mut system = self.system.write();
+        system.refresh_processes();
+        
+        let mut tauri_apps = Vec::new();
+        
+        for (pid, process) in system.processes() {
+            let name = process.name();
+            let cmd = process.cmd();
+            
+            // Look for processes that might be Tauri apps
+            if name.contains("archestra") || 
+               cmd.iter().any(|arg| arg.contains("tauri") || arg.contains("archestra")) {
+                tauri_apps.push(serde_json::json!({
+                    "pid": pid.as_u32(),
+                    "name": name,
+                    "cmd": cmd.join(" "),
+                    "memory": process.memory(),
+                    "cpu_usage": process.cpu_usage(),
+                    "status": format!("{:?}", process.status()),
+                }));
+            }
+        }
+        
+        Ok(tauri_apps)
+    }
+    
+    pub async fn attach_to_app(&mut self, pid: u32) -> Result<String> {
+        let mut system = self.system.write();
+        system.refresh_processes();
+        
+        if let Some(_process) = system.process(Pid::from_u32(pid)) {
+            let process_id = Uuid::new_v4().to_string();
+            
+            info!("Attaching to existing process with PID: {}", pid);
+            
+            // Create a dummy child process info for tracking
+            // Note: We won't have stdout/stderr for already running processes
+            let (_log_sender, log_receiver) = bounded(1000);
+            
+            // Create a dummy log handle that does nothing
+            let log_handle = tokio::spawn(async move {
+                // This task does nothing as we can't capture logs from external processes
+                tokio::time::sleep(tokio::time::Duration::from_secs(u64::MAX)).await;
+            });
+            
+            let process_info = ProcessInfo {
+                id: process_id.clone(),
+                child: None,
+                pid,
+                log_receiver,
+                log_handle,
+                is_attached: true,
+            };
+            
+            self.processes.insert(process_id.clone(), process_info);
+            
+            info!("Successfully attached to process with PID: {}", pid);
+            
+            Ok(process_id)
+        } else {
+            Err(TauriMcpError::ProcessError(format!("Process with PID {} not found", pid)))
+        }
     }
 }

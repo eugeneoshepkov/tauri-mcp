@@ -189,6 +189,25 @@ const tools = [
       },
       required: ['process_id', 'command_name']
     }
+  },
+  {
+    name: 'find_running_apps',
+    description: 'Find running Tauri applications on the system',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
+    name: 'attach_to_app',
+    description: 'Attach to an already running Tauri application by PID',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pid: { type: 'number', description: 'Process ID of the running app' }
+      },
+      required: ['pid']
+    }
   }
 ];
 
